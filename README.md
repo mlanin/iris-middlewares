@@ -1,6 +1,6 @@
 # iris-middlewares
 
-Middleware packages for the Iris framework.
+Middleware packages for the [Iris framework](https://docs.iris-go.com/).
 
 ## What?
 
