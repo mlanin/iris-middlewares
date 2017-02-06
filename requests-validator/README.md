@@ -25,8 +25,10 @@ import (
   "github.com/kataras/iris"
   "github.com/mlanin/go-apierr"
   handler "github.com/mlanin/iris-middlewares/apierr-handler"
+  validator "github.com/mlanin/iris-middlewares/requests-validator"
 )
 
+// News model.
 type News struct {
 	Text string `json:"text"`
 }
