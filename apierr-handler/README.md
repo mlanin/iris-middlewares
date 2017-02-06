@@ -44,3 +44,7 @@ func main() {
   iris.Use(errorsHandler)
 }
 ```
+
+# Working example
+
+Full working example can be found in [API Boilerplate](https://github.com/mlanin/go-api-biolerplate)
