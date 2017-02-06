@@ -10,7 +10,7 @@ go get github.com/mlanin/iris-middlewares/requests-validator
 
 ## About
 
-By Default it highly utilizes [go-apierr](https://github.com/mlanin/go-apierr)] package, so for the comfort usage better be used in link with the apierr-handler middleware from this repo.
+By Default it highly utilizes [go-apierr](https://github.com/mlanin/go-apierr) package, so for the comfort usage better be used in link with the [API Errors Handler](../apierr-handler/README.md) middleware from this repo.
 
 * Validate your requests by [ozzo-validation](https://github.com/go-ozzo/ozzo-validation).
 * Send apierr.ValiationFailed error with set of `field-name` - `error-message`.
