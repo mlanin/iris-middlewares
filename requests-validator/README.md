@@ -12,11 +12,26 @@ go get github.com/mlanin/iris-middlewares/requests-validator
 
 By Default it highly utilizes [go-apierr](https://github.com/mlanin/go-apierr) package, so for the comfort usage better be used in link with the [API Errors Handler](../apierr-handler/README.md) middleware from this repo.
 
-* Validate your requests by [ozzo-validation](https://github.com/go-ozzo/ozzo-validation).
-* Send apierr.ValiationFailed error with set of `field-name` - `error-message`.
-* Save valid request to the context to use its data further.
-
 Validation logic and errors handling can be overridden.
+
+* Validates your requests by [ozzo-validation](https://github.com/go-ozzo/ozzo-validation).
+* Saves valid request to the context to use its data further.
+* On invalid request will panic with `apierr.ValidationFailed` that can be converted in 422 response with JSON like:
+
+```json
+{
+	"id": "validation_failed",
+	"message": "Validation failed.",
+	"meta": {
+		"errors": [
+      {
+				"field": "body",
+				"message": "Cannot be blank",
+			}
+    ]
+	}
+}
+```
 
 ## Usage
 
