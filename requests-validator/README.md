@@ -16,7 +16,10 @@ Validation logic and errors handling can be overridden.
 
 * Validates your requests by [ozzo-validation](https://github.com/go-ozzo/ozzo-validation).
 * Saves valid request to the context to use its data further.
-* On invalid request will panic with `apierr.ValidationFailed` that can be converted in 422 response with JSON like:
+
+### JSON API validation
+
+On invalid request will panic with `apierr.ValidationFailed` that can be converted in 422 response with JSON like:
 
 ```json
 {
@@ -32,6 +35,11 @@ Validation logic and errors handling can be overridden.
 	}
 }
 ```
+
+### Common web forms validation
+
+On invalid requests old input and validation errors will be saved to session flash and redirected back
+to the referer url or previous visited page or `/`.
 
 ## Usage
 
@@ -54,6 +62,12 @@ type PostNews struct {
 	News
 }
 
+// Type of the request. "json" or "form".
+// Used to resolve field name from the request struct's tags.
+func (r *PostAPINews) Type() string {
+	return "json"
+}
+
 // Validate request.
 // As you see, validation logic can be anything you want.
 func (r *PostNews) Validate(ctx *iris.Context) error {
@@ -70,7 +84,10 @@ func (r *PostNews) Validate(ctx *iris.Context) error {
 
 func main() {
 
-  // Enable APIErrors handler middleware.
+	// Make RequestsValidator middleware.
+	rv := validator.New(validator.Config{})
+
+  // Make APIErrors handler middleware.
   errorsHandler := handler.New(handler.Config{
 		EnvGetter: func() string {
 			return "production"
@@ -79,10 +96,13 @@ func main() {
 			return false
 		},
 	})
-  iris.Use(errorsHandler)
 
-  // Place validator.ValidateRequest with you request struct right before main handler.
-	iris.Post("/news", validator.ValidateRequest(&PostNews{}), func(ctx *iris.Context) {
+	// Import middlewares.
+  iris.Use(errorsHandler)
+  iris.Use(rv)
+
+  // Place rv.ValidateRequest with you request struct right before main handler.
+	iris.Post("/news", rv.ValidateRequest(&PostNews{}), func(ctx *iris.Context) {
     // If request is valid, it will be stored by "request" key in the context.
     request := ctx.Get("request").(*PostNews)
 
@@ -94,30 +114,19 @@ func main() {
 
 ## Override handler
 
-You can override error handing logic by passing your own handler to the validation constructor.
+You can override error handing logic by passing your own handlers to the validator's constructor.
 
 ```go
 func main() {
 
-  // Enable APIErrors handler middleware.
-  errorsHandler := handler.New(handler.Config{
-		EnvGetter: func() string {
-			return "production"
+	// Make RequestsValidator middleware and override default JSON API requests errors.
+	rv := validator.New(validator.Config{
+		APIHandler: func(err error, ctx *iris.Context) {
+			panic(apierr.BadRequest)
 		},
-		DebugGetter: func() bool {
-			return false
+		WebHandler: func(err error, ctx *iris.Context) {
+			ctx.Text(200, "Error")
 		},
-	})
-  iris.Use(errorsHandler)
-
-  // Create new validator instance and pass your own handler.
-	requestsValidator := validator.New(func(err error) {
-		panic(apierr.BadRequest)
-	})
-
-  // The same logic, but use ValidateRequest method of the instance.
-	iris.Post("/news", requestsValidator.ValidateRequest(&PostNews{}), func(ctx *iris.Context) {
-		ctx.Text(200, "Done")
 	})
 
 }

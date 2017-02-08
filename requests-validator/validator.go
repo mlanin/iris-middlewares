@@ -1,76 +1,128 @@
 package validator
 
 import (
+	"reflect"
+
 	validation "github.com/go-ozzo/ozzo-validation"
 	"github.com/kataras/iris"
 	"github.com/mlanin/go-apierr"
-	"github.com/serenize/snaker"
 )
 
 // HTTPRequest interface.
 type HTTPRequest interface {
+	// Type of the request.
+	Type() string
+	// Validate request.
 	Validate(ctx *iris.Context) error
+}
+
+// Config for the middleware.
+type Config struct {
+	WebHandler func(err error, ctx *iris.Context)
+	APIHandler func(err error, ctx *iris.Context)
 }
 
 // RequestValidator for http requests.
 type RequestValidator struct {
 	Request HTTPRequest
-	Handler func(err error)
+	Config
 }
 
 // New middleware.
-func New(handler func(err error)) *RequestValidator {
+func New(config Config) *RequestValidator {
 	validator := &RequestValidator{
-		Handler: handler,
+		Config: config,
+	}
+
+	if validator.APIHandler == nil {
+		validator.APIHandler = validator.sendAPIError
+	}
+
+	if validator.WebHandler == nil {
+		validator.WebHandler = validator.sendWebError
 	}
 
 	return validator
 }
 
 // ValidateRequest helper function to make validator.
-func ValidateRequest(request HTTPRequest) iris.HandlerFunc {
-	validator := &RequestValidator{
-		Request: request,
-	}
-
-	validator.Handler = func(err error) {
-		panic(validator.makeAPIError(err))
-	}
-
-	return validator.Serve
-}
-
-// ValidateRequest helper function to make validator.
 func (rv *RequestValidator) ValidateRequest(request HTTPRequest) iris.HandlerFunc {
 	rv.Request = request
 
-	return rv.Serve
+	return rv.Validate
 }
 
 // Serve the middleware.
 func (rv *RequestValidator) Serve(ctx *iris.Context) {
-	err := rv.Request.Validate(ctx)
-
-	if err != nil {
-		rv.Handler(err)
-	}
-
-	ctx.Set("request", rv.Request)
 	ctx.Next()
+
+	// Save current url.
+	rv.storeCurrentURL(ctx)
 }
 
-// Prepare api validation error.
-func (rv *RequestValidator) makeAPIError(err error) *apierr.APIError {
-	errors := []apierr.ValidationError{}
+// Validate request.
+func (rv *RequestValidator) Validate(ctx *iris.Context) {
+	err := rv.Request.Validate(ctx)
 
-	// Convert error to validation errors and append it to the meta tag.
-	fails := err.(validation.Errors)
-	for field, message := range fails {
-		errors = append(errors, apierr.ValidationError{
-			Field:   snaker.CamelToSnake(field), // Convert field name to snake_case
-			Message: UcFirst(message.Error()),   // Upper case first letter of the message
-		})
+	if err == nil {
+		// Save request to use it futher in controller.
+		ctx.Set("request", rv.Request)
+
+		// Switch to next handler.
+		ctx.Next()
+		return
 	}
+
+	// Convert errors to validation fails and send them to the user.
+	if rv.wantsJSON(ctx) {
+		rv.APIHandler(err, ctx)
+	} else {
+		rv.WebHandler(err, ctx)
+	}
+}
+
+// If user want's only JSON.
+func (rv *RequestValidator) wantsJSON(ctx *iris.Context) bool {
+	return ctx.RequestHeader("accept") == "application/json"
+}
+
+// Store current url to reuse it for
+func (rv *RequestValidator) storeCurrentURL(ctx *iris.Context) {
+	if ctx.Method() == "GET" && !ctx.IsAjax() && !rv.wantsJSON(ctx) {
+		ctx.Session().Set("_previous_url", ctx.Request.URL.String())
+	}
+}
+
+// Add validation errors to flash and send back 302 redirect.
+func (rv *RequestValidator) sendWebError(err error, ctx *iris.Context) {
+	errors := rv.convertErrors(err)
+
+	ctx.Session().SetFlash("_errors", errors)
+	ctx.Session().SetFlash("_old_input", rv.Request)
+
+	rv.redirectBack(ctx)
+}
+
+// Redirect user back to show page with errors.
+func (rv *RequestValidator) redirectBack(ctx *iris.Context) {
+	referer := ctx.RequestHeader("referer")
+	if referer != "" {
+		ctx.Redirect(referer, 302)
+		return
+	}
+
+	previousURL := ctx.Session().GetFlash("_previous_url")
+	if previousURL != nil {
+		ctx.Redirect(previousURL.(string), 302)
+		return
+	}
+
+	ctx.Redirect("/", 302)
+}
+
+// Send API validation error.
+func (rv *RequestValidator) sendAPIError(err error, ctx *iris.Context) {
+	errors := rv.convertErrors(err)
 
 	// Create new api error and attach meta with errors.
 	fail := *apierr.ValiationFailed
@@ -78,5 +130,38 @@ func (rv *RequestValidator) makeAPIError(err error) *apierr.APIError {
 		Errors: errors,
 	})
 
-	return &fail
+	panic(&fail)
+}
+
+// Convert errors to field - message format.
+func (rv *RequestValidator) convertErrors(err error) []apierr.ValidationError {
+	fails := err.(validation.Errors)
+	errors := []apierr.ValidationError{}
+
+	reflection := reflect.ValueOf(rv.Request).Elem().Type()
+	requestType := rv.Request.Type()
+
+	for field, message := range fails {
+		errors = append(errors, apierr.ValidationError{
+			Field:   rv.normalizeFieldName(reflection, requestType, field),
+			Message: rv.normalizeMessage(message),
+		})
+	}
+
+	return errors
+}
+
+// Convert request attribute name to normal.
+func (rv *RequestValidator) normalizeFieldName(reflection reflect.Type, requestType string, name string) string {
+	field, ok := reflection.FieldByName(name)
+	if ok {
+		return field.Tag.Get(requestType)
+	}
+
+	return name
+}
+
+// Upper case first letter of the message.
+func (rv *RequestValidator) normalizeMessage(message error) string {
+	return UcFirst(message.Error())
 }

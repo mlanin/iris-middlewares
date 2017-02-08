@@ -12,17 +12,22 @@ import (
 )
 
 type News struct {
-	Text string `json:"text"`
+	Text string `json:"text" form:"text"`
 }
 
-// PostNews request.
-type PostNews struct {
+// PostAPINews request.
+type PostAPINews struct {
 	validator.HTTPRequest
 	News
 }
 
+// Type of the request.
+func (r *PostAPINews) Type() string {
+	return "json"
+}
+
 // Validate request.
-func (r *PostNews) Validate(ctx *iris.Context) error {
+func (r *PostAPINews) Validate(ctx *iris.Context) error {
 	if err := ctx.ReadJSON(&r.News); err != nil {
 		panic(err.Error())
 	}
@@ -32,10 +37,31 @@ func (r *PostNews) Validate(ctx *iris.Context) error {
 		Validate(r)
 }
 
-func TestItThrowsError(t *testing.T) {
+// PostWebNews request.
+type PostWebNews struct {
+	validator.HTTPRequest
+	News
+}
+
+// Type of the request.
+func (r *PostWebNews) Type() string {
+	return "form"
+}
+
+// Validate request.
+func (r *PostWebNews) Validate(ctx *iris.Context) error {
+	r.Text = ctx.PostValue("text")
+
+	return validation.StructRules{}.
+		Add("Text", validation.Required).
+		Validate(r)
+}
+
+func TestItThrowsAPIError(t *testing.T) {
 	api := iris.New()
 	defer api.Close()
 
+	rv := validator.New(validator.Config{})
 	errorsHandler := handler.New(handler.Config{
 		EnvGetter: func() string {
 			return "production"
@@ -46,8 +72,9 @@ func TestItThrowsError(t *testing.T) {
 	})
 
 	api.Use(errorsHandler)
+	api.Use(rv)
 
-	api.Post("/news", validator.ValidateRequest(&PostNews{}), func(ctx *iris.Context) {
+	api.Post("/news", rv.ValidateRequest(&PostAPINews{}), func(ctx *iris.Context) {
 		ctx.Text(200, "Done")
 	})
 
@@ -78,16 +105,17 @@ func TestItThrowsError(t *testing.T) {
 	}`
 
 	e := httptest.New(api, t, httptest.ExplicitURL(true))
-	e.POST("/news").WithText("{}").
+	e.POST("/news").WithHeader("Accept", "application/json").WithJSON(map[string]interface{}{"foo": 123}).
 		Expect().
 		Status(iris.StatusUnprocessableEntity).
 		JSON().Schema(schema)
 }
 
-func TestItPassesIfEverythingOk(t *testing.T) {
+func TestItHandlesWebReqest(t *testing.T) {
 	api := iris.New()
 	defer api.Close()
 
+	rv := validator.New(validator.Config{})
 	errorsHandler := handler.New(handler.Config{
 		EnvGetter: func() string {
 			return "production"
@@ -98,9 +126,41 @@ func TestItPassesIfEverythingOk(t *testing.T) {
 	})
 
 	api.Use(errorsHandler)
+	api.Use(rv)
 
-	api.Post("/news", validator.ValidateRequest(&PostNews{}), func(ctx *iris.Context) {
-		request := ctx.Get("request").(*PostNews)
+	api.Get("/foo", func(ctx *iris.Context) {
+		ctx.Text(200, "Foo")
+	})
+	api.Post("/news", rv.ValidateRequest(&PostWebNews{}), func(ctx *iris.Context) {
+		ctx.Text(200, "Done")
+	})
+
+	e := httptest.New(api, t, httptest.ExplicitURL(true), httptest.Debug(true))
+	e.POST("/news").WithHeader("Referer", "/foo").
+		Expect().
+		Status(iris.StatusOK).
+		Body().Equal("Foo")
+}
+
+func TestItPassesIfEverythingIsOk(t *testing.T) {
+	api := iris.New()
+	defer api.Close()
+
+	rv := validator.New(validator.Config{})
+	errorsHandler := handler.New(handler.Config{
+		EnvGetter: func() string {
+			return "production"
+		},
+		DebugGetter: func() bool {
+			return false
+		},
+	})
+
+	api.Use(errorsHandler)
+	api.Use(rv)
+
+	api.Post("/news", rv.ValidateRequest(&PostAPINews{}), func(ctx *iris.Context) {
+		request := ctx.Get("request").(*PostAPINews)
 
 		ctx.Text(200, request.Text)
 	})
@@ -125,18 +185,21 @@ func TestHandlerOverride(t *testing.T) {
 		},
 	})
 
-	requestsValidator := validator.New(func(err error) {
-		panic(apierr.BadRequest)
+	rv := validator.New(validator.Config{
+		APIHandler: func(err error, ctx *iris.Context) {
+			panic(apierr.BadRequest)
+		},
 	})
 
 	api.Use(errorsHandler)
+	api.Use(rv)
 
-	api.Post("/news", requestsValidator.ValidateRequest(&PostNews{}), func(ctx *iris.Context) {
+	api.Post("/news", rv.ValidateRequest(&PostAPINews{}), func(ctx *iris.Context) {
 		ctx.Text(200, "Done")
 	})
 
 	e := httptest.New(api, t, httptest.ExplicitURL(true))
-	e.POST("/news").WithText("{}").
+	e.POST("/news").WithHeader("Accept", "application/json").WithJSON(map[string]interface{}{"foo": 123}).
 		Expect().
 		Status(iris.StatusBadRequest)
 }
