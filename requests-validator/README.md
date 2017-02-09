@@ -23,8 +23,10 @@ On invalid request will panic with `apierr.ValidationFailed` that can be convert
 
 ```json
 {
-	"id": "validation_failed",
-	"message": "Validation failed.",
+	"error": {
+		"id": "validation_failed",
+		"message": "Validation failed.",
+	},
 	"meta": {
 		"errors": [
       {
