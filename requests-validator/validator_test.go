@@ -81,8 +81,14 @@ func TestItThrowsAPIError(t *testing.T) {
 	schema := `{
 		"type": "object",
 		"properties": {
-			"id":        {"type": "string"},
-			"message":   {"type": "string"},
+			"error": {
+				"type": "object",
+				"properties": {
+					"id":        {"type": "string"},
+					"message":   {"type": "string"}
+				},
+				"required": ["id", "message"]
+			},
 			"meta": {
 				"type": "object",
 				"properties": {
@@ -101,7 +107,7 @@ func TestItThrowsAPIError(t *testing.T) {
 				"required": ["errors"]
 			}
 		},
-		"required": ["id", "message", "meta"]
+		"required": ["error", "meta"]
 	}`
 
 	e := httptest.New(api, t, httptest.ExplicitURL(true))

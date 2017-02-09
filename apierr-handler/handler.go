@@ -75,8 +75,10 @@ func (h *Handler) NewAPIError(err error) *apierr.APIError {
 	}
 
 	return &apierr.APIError{
-		ID:           "internal_server_error",
-		Message:      err.Error(),
+		Body: apierr.Body{
+			ID:      "internal_server_error",
+			Message: err.Error(),
+		},
 		HTTPCode:     http.StatusInternalServerError,
 		ShouldReport: true,
 	}

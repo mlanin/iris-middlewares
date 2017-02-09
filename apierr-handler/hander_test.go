@@ -33,7 +33,9 @@ func TestItCatchesPanicWithAPIError(t *testing.T) {
 	e.GET("/").
 		Expect().
 		Status(iris.StatusNotFound).
-		JSON().Object().ContainsKey("id").ValueEqual("id", "not_found")
+		JSON().
+		Object().ContainsKey("error").Value("error").
+		Object().ValueEqual("id", "not_found")
 }
 
 func TestItCatchesPanicWithAPIErrorWithMeta(t *testing.T) {
@@ -64,17 +66,23 @@ func TestItCatchesPanicWithAPIErrorWithMeta(t *testing.T) {
 	schema := `{
 		"type": "object",
 		"properties": {
-			"id":        {"type": "string"},
-			"message":   {"type": "string"},
+			"error": {
+				"type": "object",
+				"properties": {
+					"id":        {"type": "string"},
+					"message":   {"type": "string"}
+				},
+				"required": ["id", "message"]
+			},
 			"meta": {
 				"type": "object",
 				"properties": {
-					"fail":  {"type": "string"}
+					"fail": {"type": "string"}
 				},
 				"required": ["fail"]
 			}
 		},
-		"required": ["id", "message", "meta"]
+		"required": ["error", "meta"]
 	}`
 
 	e := httptest.New(api, t, httptest.ExplicitURL(true))
@@ -107,7 +115,9 @@ func TestItCatchesPanicWithNativeError(t *testing.T) {
 	e.GET("/").
 		Expect().
 		Status(iris.StatusInternalServerError).
-		JSON().Object().ContainsKey("id").ValueEqual("id", "internal_server_error")
+		JSON().
+		Object().ContainsKey("error").Value("error").
+		Object().ContainsKey("id").ValueEqual("id", "internal_server_error")
 }
 
 func TestItCatchesPanicWithString(t *testing.T) {
@@ -133,7 +143,9 @@ func TestItCatchesPanicWithString(t *testing.T) {
 	e.GET("/").
 		Expect().
 		Status(iris.StatusInternalServerError).
-		JSON().Object().ContainsKey("id").ValueEqual("id", "internal_server_error")
+		JSON().
+		Object().ContainsKey("error").Value("error").
+		Object().ValueEqual("id", "internal_server_error")
 }
 
 func TestItCatchesPanicWithStringForLocal(t *testing.T) {
@@ -159,7 +171,9 @@ func TestItCatchesPanicWithStringForLocal(t *testing.T) {
 	e.GET("/").
 		Expect().
 		Status(iris.StatusInternalServerError).
-		JSON().Object().ContainsKey("message").ValueEqual("message", "foo")
+		JSON().
+		Object().ContainsKey("error").Value("error").
+		Object().ContainsKey("message").ValueEqual("message", "foo")
 }
 
 func TestItCatchesPanicWithAnyValue(t *testing.T) {
@@ -185,5 +199,7 @@ func TestItCatchesPanicWithAnyValue(t *testing.T) {
 	e.GET("/").
 		Expect().
 		Status(iris.StatusInternalServerError).
-		JSON().Object().ContainsKey("id").ValueEqual("id", "internal_server_error")
+		JSON().
+		Object().ContainsKey("error").Value("error").
+		Object().ValueEqual("id", "internal_server_error")
 }
