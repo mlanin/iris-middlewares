@@ -40,9 +40,9 @@ func (h *Handler) Serve(ctx *iris.Context) {
 			fail := h.convertToAPIError(err)
 
 			if h.needToReport(fail) {
-				messages = append(messages, fmt.Sprintf("[apierr.APIError] %+v\n", h.thrower()))
-				messages = append(messages, fmt.Sprintf("%+v [%+v]\n", err, fail.Context))
+				messages = append(messages, fmt.Sprintf("[apierr.APIError] %+v [%+v]\n", err, fail.Context))
 				if h.needToAddTrace(fail) {
+					messages = append(messages, fmt.Sprintf("--> %+v\n", h.thrower()))
 					messages = append(messages, string(debug.Stack()))
 				}
 				ctx.Log(fmt.Sprintln(messages...))
