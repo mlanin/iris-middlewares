@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
+	"runtime"
 	"runtime/debug"
 
 	"github.com/kataras/iris"
@@ -32,14 +34,18 @@ func New(cfg Config) *Handler {
 // Serve the middleware.
 func (h *Handler) Serve(ctx *iris.Context) {
 	defer func() {
+		messages := make([]interface{}, 0)
+
 		if err := recover(); err != nil {
 			fail := h.convertToAPIError(err)
 
 			if h.needToReport(fail) {
-				ctx.Log("[apierr.APIError] %+v [%+v]", err, fail.Context)
+				messages = append(messages, fmt.Sprintf("[apierr.APIError] %+v\n", h.thrower()))
+				messages = append(messages, fmt.Sprintf("%+v [%+v]\n", err, fail.Context))
 				if h.needToAddTrace(fail) {
-					ctx.Log("[Trace] %s", debug.Stack())
+					messages = append(messages, string(debug.Stack()))
 				}
+				ctx.Log(fmt.Sprintln(messages...))
 			}
 
 			ctx.JSON(fail.HTTPCode, fail)
@@ -102,4 +108,19 @@ func (h *Handler) isProduction() bool {
 // Check if app in debug mode is on.
 func (h *Handler) isDebugOn() bool {
 	return h.Config.DebugGetter()
+}
+
+// Return a possible line, where panic was thrown.
+func (h *Handler) thrower() string {
+	var goSrcRegexp = regexp.MustCompile(`(mlanin/apierr-handler/.*.go)|(libexec/src/runtime)`)
+	var goTestRegexp = regexp.MustCompile(`mlanin/apierr-handler/.*test.go`)
+
+	for i := 2; i < 15; i++ {
+		_, file, line, ok := runtime.Caller(i)
+		if ok && (!goSrcRegexp.MatchString(file) || goTestRegexp.MatchString(file)) {
+			return fmt.Sprintf("%v:%v", file, line)
+		}
+	}
+
+	return ""
 }
