@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"strings"
 
 	"github.com/kataras/iris"
 	"github.com/mlanin/go-apierr"
@@ -34,18 +35,18 @@ func New(cfg Config) *Handler {
 // Serve the middleware.
 func (h *Handler) Serve(ctx *iris.Context) {
 	defer func() {
-		messages := make([]interface{}, 0)
+		messages := make([]string, 0)
 
 		if err := recover(); err != nil {
 			fail := h.convertToAPIError(err)
 
 			if h.needToReport(fail) {
-				messages = append(messages, fmt.Sprintf("[apierr.APIError] %+v [%+v]\n", err, fail.Context))
+				messages = append(messages, fmt.Sprintf("[apierr.APIError] %+v [%+v]", err, fail.Context))
 				if h.needToAddTrace(fail) {
-					messages = append(messages, fmt.Sprintf("--> %+v\n", h.thrower()))
+					messages = append(messages, fmt.Sprintf("--> %+v", h.thrower()))
 					messages = append(messages, string(debug.Stack()))
 				}
-				ctx.Log(fmt.Sprintln(messages...))
+				ctx.Log(strings.Join(messages, "\n"))
 			}
 
 			ctx.JSON(fail.HTTPCode, fail)
