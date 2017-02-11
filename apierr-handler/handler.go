@@ -98,7 +98,7 @@ func (h *Handler) needToReport(fail *apierr.APIError) bool {
 
 // Check if we neer to report the error.
 func (h *Handler) needToAddTrace(fail *apierr.APIError) bool {
-	return fail.WantsToShowTrace() || !h.isDebugOn()
+	return fail.WantsToShowTrace() || h.isDebugOn()
 }
 
 // Check if app in production mode.
