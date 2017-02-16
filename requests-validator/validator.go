@@ -22,15 +22,15 @@ type Config struct {
 	APIHandler func(err error, ctx *iris.Context)
 }
 
-// RequestValidator for http requests.
-type RequestValidator struct {
+// RequestsValidator for http requests.
+type RequestsValidator struct {
 	Request HTTPRequest
 	Config
 }
 
 // New middleware.
-func New(config Config) *RequestValidator {
-	validator := &RequestValidator{
+func New(config Config) *RequestsValidator {
+	validator := &RequestsValidator{
 		Config: config,
 	}
 
@@ -46,14 +46,14 @@ func New(config Config) *RequestValidator {
 }
 
 // ValidateRequest helper function to make validator.
-func (rv *RequestValidator) ValidateRequest(request HTTPRequest) iris.HandlerFunc {
+func (rv *RequestsValidator) ValidateRequest(request HTTPRequest) iris.HandlerFunc {
 	rv.Request = request
 
 	return rv.Validate
 }
 
 // Serve the middleware.
-func (rv *RequestValidator) Serve(ctx *iris.Context) {
+func (rv *RequestsValidator) Serve(ctx *iris.Context) {
 	ctx.Next()
 
 	// Save current url.
@@ -61,7 +61,7 @@ func (rv *RequestValidator) Serve(ctx *iris.Context) {
 }
 
 // Validate request.
-func (rv *RequestValidator) Validate(ctx *iris.Context) {
+func (rv *RequestsValidator) Validate(ctx *iris.Context) {
 	err := rv.Request.Validate(ctx)
 
 	if err == nil {
@@ -82,19 +82,19 @@ func (rv *RequestValidator) Validate(ctx *iris.Context) {
 }
 
 // If user want's only JSON.
-func (rv *RequestValidator) wantsJSON(ctx *iris.Context) bool {
+func (rv *RequestsValidator) wantsJSON(ctx *iris.Context) bool {
 	return ctx.RequestHeader("accept") == "application/json"
 }
 
 // Store current url to reuse it for
-func (rv *RequestValidator) storeCurrentURL(ctx *iris.Context) {
+func (rv *RequestsValidator) storeCurrentURL(ctx *iris.Context) {
 	if ctx.Method() == "GET" && !ctx.IsAjax() && !rv.wantsJSON(ctx) {
 		ctx.Session().Set("_previous_url", ctx.Request.URL.String())
 	}
 }
 
 // Add validation errors to flash and send back 302 redirect.
-func (rv *RequestValidator) sendWebError(err error, ctx *iris.Context) {
+func (rv *RequestsValidator) sendWebError(err error, ctx *iris.Context) {
 	errors := rv.convertErrors(err)
 
 	ctx.Session().SetFlash("_errors", errors)
@@ -104,7 +104,7 @@ func (rv *RequestValidator) sendWebError(err error, ctx *iris.Context) {
 }
 
 // Redirect user back to show page with errors.
-func (rv *RequestValidator) redirectBack(ctx *iris.Context) {
+func (rv *RequestsValidator) redirectBack(ctx *iris.Context) {
 	referer := ctx.RequestHeader("referer")
 	if referer != "" {
 		ctx.Redirect(referer, 302)
@@ -121,7 +121,7 @@ func (rv *RequestValidator) redirectBack(ctx *iris.Context) {
 }
 
 // Send API validation error.
-func (rv *RequestValidator) sendAPIError(err error, ctx *iris.Context) {
+func (rv *RequestsValidator) sendAPIError(err error, ctx *iris.Context) {
 	errors := rv.convertErrors(err)
 
 	// Create new api error and attach meta with errors.
@@ -134,7 +134,7 @@ func (rv *RequestValidator) sendAPIError(err error, ctx *iris.Context) {
 }
 
 // Convert errors to field - message format.
-func (rv *RequestValidator) convertErrors(err error) []apierr.ValidationError {
+func (rv *RequestsValidator) convertErrors(err error) []apierr.ValidationError {
 	fails := err.(validation.Errors)
 	errors := []apierr.ValidationError{}
 
@@ -152,7 +152,7 @@ func (rv *RequestValidator) convertErrors(err error) []apierr.ValidationError {
 }
 
 // Convert request attribute name to normal.
-func (rv *RequestValidator) normalizeFieldName(reflection reflect.Type, requestType string, name string) string {
+func (rv *RequestsValidator) normalizeFieldName(reflection reflect.Type, requestType string, name string) string {
 	field, ok := reflection.FieldByName(name)
 	if ok {
 		return field.Tag.Get(requestType)
@@ -162,6 +162,6 @@ func (rv *RequestValidator) normalizeFieldName(reflection reflect.Type, requestT
 }
 
 // Upper case first letter of the message.
-func (rv *RequestValidator) normalizeMessage(message error) string {
+func (rv *RequestsValidator) normalizeMessage(message error) string {
 	return UcFirst(message.Error())
 }
