@@ -192,7 +192,7 @@ func TestHandlerOverride(t *testing.T) {
 	})
 
 	rv := validator.New(validator.Config{
-		APIHandler: func(err error, ctx *iris.Context) {
+		APIHandler: func(err error, request validator.HTTPRequest, ctx *iris.Context) {
 			panic(apierr.BadRequest)
 		},
 	})

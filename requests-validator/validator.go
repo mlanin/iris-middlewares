@@ -18,13 +18,12 @@ type HTTPRequest interface {
 
 // Config for the middleware.
 type Config struct {
-	WebHandler func(err error, ctx *iris.Context)
-	APIHandler func(err error, ctx *iris.Context)
+	WebHandler func(err error, request HTTPRequest, ctx *iris.Context)
+	APIHandler func(err error, request HTTPRequest, ctx *iris.Context)
 }
 
 // RequestsValidator for http requests.
 type RequestsValidator struct {
-	Request HTTPRequest
 	Config
 }
 
@@ -47,9 +46,25 @@ func New(config Config) *RequestsValidator {
 
 // ValidateRequest helper function to make validator.
 func (rv *RequestsValidator) ValidateRequest(request HTTPRequest) iris.HandlerFunc {
-	rv.Request = request
+	return func(ctx *iris.Context) {
+		err := request.Validate(ctx)
 
-	return rv.Validate
+		if err == nil {
+			// Save request to use it futher in controller.
+			ctx.Set("request", request)
+
+			// Switch to next handler.
+			ctx.Next()
+			return
+		}
+
+		// Convert errors to validation fails and send them to the user.
+		if rv.wantsJSON(ctx) {
+			rv.APIHandler(err, request, ctx)
+		} else {
+			rv.WebHandler(err, request, ctx)
+		}
+	}
 }
 
 // Serve the middleware.
@@ -60,30 +75,32 @@ func (rv *RequestsValidator) Serve(ctx *iris.Context) {
 	rv.storeCurrentURL(ctx)
 }
 
-// Validate request.
-func (rv *RequestsValidator) Validate(ctx *iris.Context) {
-	err := rv.Request.Validate(ctx)
-
-	if err == nil {
-		// Save request to use it futher in controller.
-		ctx.Set("request", rv.Request)
-
-		// Switch to next handler.
-		ctx.Next()
-		return
-	}
-
-	// Convert errors to validation fails and send them to the user.
-	if rv.wantsJSON(ctx) {
-		rv.APIHandler(err, ctx)
-	} else {
-		rv.WebHandler(err, ctx)
-	}
-}
-
 // If user want's only JSON.
 func (rv *RequestsValidator) wantsJSON(ctx *iris.Context) bool {
 	return ctx.RequestHeader("accept") == "application/json"
+}
+
+// Add validation errors to flash and send back 302 redirect.
+func (rv *RequestsValidator) sendWebError(err error, request HTTPRequest, ctx *iris.Context) {
+	errors := rv.convertErrors(err, request)
+
+	ctx.Session().SetFlash("_errors", errors)
+	ctx.Session().SetFlash("_old_input", request)
+
+	rv.redirectBack(ctx)
+}
+
+// Send API validation error.
+func (rv *RequestsValidator) sendAPIError(err error, request HTTPRequest, ctx *iris.Context) {
+	errors := rv.convertErrors(err, request)
+
+	// Create new api error and attach meta with errors.
+	fail := *apierr.ValiationFailed
+	fail.AddMeta(&apierr.ValidationErrors{
+		Errors: errors,
+	})
+
+	panic(&fail)
 }
 
 // Store current url to reuse it for
@@ -91,16 +108,6 @@ func (rv *RequestsValidator) storeCurrentURL(ctx *iris.Context) {
 	if ctx.Method() == "GET" && !ctx.IsAjax() && !rv.wantsJSON(ctx) {
 		ctx.Session().Set("_previous_url", ctx.Request.URL.String())
 	}
-}
-
-// Add validation errors to flash and send back 302 redirect.
-func (rv *RequestsValidator) sendWebError(err error, ctx *iris.Context) {
-	errors := rv.convertErrors(err)
-
-	ctx.Session().SetFlash("_errors", errors)
-	ctx.Session().SetFlash("_old_input", rv.Request)
-
-	rv.redirectBack(ctx)
 }
 
 // Redirect user back to show page with errors.
@@ -120,26 +127,13 @@ func (rv *RequestsValidator) redirectBack(ctx *iris.Context) {
 	ctx.Redirect("/", 302)
 }
 
-// Send API validation error.
-func (rv *RequestsValidator) sendAPIError(err error, ctx *iris.Context) {
-	errors := rv.convertErrors(err)
-
-	// Create new api error and attach meta with errors.
-	fail := *apierr.ValiationFailed
-	fail.AddMeta(&apierr.ValidationErrors{
-		Errors: errors,
-	})
-
-	panic(&fail)
-}
-
 // Convert errors to field - message format.
-func (rv *RequestsValidator) convertErrors(err error) []apierr.ValidationError {
+func (rv *RequestsValidator) convertErrors(err error, request HTTPRequest) []apierr.ValidationError {
 	fails := err.(validation.Errors)
 	errors := []apierr.ValidationError{}
 
-	reflection := reflect.ValueOf(rv.Request).Elem().Type()
-	requestType := rv.Request.Type()
+	reflection := reflect.ValueOf(request).Elem().Type()
+	requestType := request.Type()
 
 	for field, message := range fails {
 		errors = append(errors, apierr.ValidationError{
