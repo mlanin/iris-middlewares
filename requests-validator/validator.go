@@ -2,6 +2,7 @@ package validator
 
 import (
 	"reflect"
+    "strings"
 
 	validation "github.com/go-ozzo/ozzo-validation"
 	"github.com/kataras/iris"
@@ -77,7 +78,7 @@ func (rv *RequestsValidator) Serve(ctx *iris.Context) {
 
 // If user want's only JSON.
 func (rv *RequestsValidator) wantsJSON(ctx *iris.Context) bool {
-	return ctx.RequestHeader("accept") == "application/json"
+	return strings.Contains(ctx.RequestHeader("accept"), "application/json")
 }
 
 // Add validation errors to flash and send back 302 redirect.
