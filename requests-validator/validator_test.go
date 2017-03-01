@@ -12,49 +12,40 @@ import (
 )
 
 type News struct {
-	Text string `json:"text" form:"text"`
+	Text string `json:"text"`
 }
 
-// PostAPINews request.
-type PostAPINews struct {
-	validator.HTTPRequest
-	News
+type PostNewsJSON struct {
+	Text string `json:"text"`
 }
 
-// Type of the request.
-func (r *PostAPINews) Type() string {
-	return "json"
+func (r *PostNewsJSON) Validate() error {
+	return validation.ValidateStruct(r,
+		validation.Field(&r.Text, validation.Required),
+	)
 }
 
-// Validate request.
-func (r *PostAPINews) Validate(ctx *iris.Context) error {
-	if err := ctx.ReadJSON(&r.News); err != nil {
-		panic(err.Error())
-	}
-
-	return validation.StructRules{}.
-		Add("Text", validation.Required).
-		Validate(r)
+type PostNewsForm struct {
+	Text string `form:"text"`
 }
 
-// PostWebNews request.
-type PostWebNews struct {
-	validator.HTTPRequest
-	News
+func (r *PostNewsForm) Validate() error {
+	return validation.ValidateStruct(r,
+		validation.Field(&r.Text, validation.Required),
+	)
 }
 
-// Type of the request.
-func (r *PostWebNews) Type() string {
-	return "form"
+// PostNewsQuery request.
+type PostNewsQuery struct {
+	Text    string `query:"text"`
+	Integer int    `query:"int"`
 }
 
 // Validate request.
-func (r *PostWebNews) Validate(ctx *iris.Context) error {
-	r.Text = ctx.PostValue("text")
-
-	return validation.StructRules{}.
-		Add("Text", validation.Required).
-		Validate(r)
+func (r *PostNewsQuery) Validate() error {
+	return validation.ValidateStruct(r,
+		validation.Field(&r.Text, validation.Required),
+	)
 }
 
 func TestItThrowsAPIError(t *testing.T) {
@@ -74,7 +65,7 @@ func TestItThrowsAPIError(t *testing.T) {
 	api.Use(errorsHandler)
 	api.Use(rv)
 
-	api.Post("/news", rv.ValidateRequest(&PostAPINews{}), func(ctx *iris.Context) {
+	api.Post("/news", rv.ValidateRequest(&PostNewsJSON{}), func(ctx *iris.Context) {
 		ctx.Text(200, "Done")
 	})
 
@@ -137,7 +128,7 @@ func TestItHandlesWebReqest(t *testing.T) {
 	api.Get("/foo", func(ctx *iris.Context) {
 		ctx.Text(200, "Foo")
 	})
-	api.Post("/news", rv.ValidateRequest(&PostWebNews{}), func(ctx *iris.Context) {
+	api.Post("/news", rv.ValidateRequest(&PostNewsForm{}), func(ctx *iris.Context) {
 		ctx.Text(200, "Done")
 	})
 
@@ -165,14 +156,44 @@ func TestItPassesIfEverythingIsOk(t *testing.T) {
 	api.Use(errorsHandler)
 	api.Use(rv)
 
-	api.Post("/news", rv.ValidateRequest(&PostAPINews{}), func(ctx *iris.Context) {
-		request := ctx.Get("request").(*PostAPINews)
+	api.Post("/news", rv.ValidateRequest(&PostNewsJSON{}), func(ctx *iris.Context) {
+		request := ctx.Get("validator_test.PostNewsJSON").(*PostNewsJSON)
 
 		ctx.Text(200, request.Text)
 	})
 
 	e := httptest.New(api, t, httptest.ExplicitURL(true))
 	e.POST("/news").WithJSON(&News{Text: "Foo bar"}).
+		Expect().
+		Status(iris.StatusOK).
+		Body().Equal("Foo bar")
+}
+
+func TestItPassesQueryIfEverythingIsOk(t *testing.T) {
+	api := iris.New()
+	defer api.Close()
+
+	rv := validator.New(validator.Config{})
+	errorsHandler := handler.New(handler.Config{
+		EnvGetter: func() string {
+			return "production"
+		},
+		DebugGetter: func() bool {
+			return false
+		},
+	})
+
+	api.Use(errorsHandler)
+	api.Use(rv)
+
+	api.Get("/news", rv.ValidateRequest(&PostNewsQuery{}), func(ctx *iris.Context) {
+		request := ctx.Get("validator_test.PostNewsQuery").(*PostNewsQuery)
+
+		ctx.Text(200, request.Text)
+	})
+
+	e := httptest.New(api, t, httptest.ExplicitURL(true))
+	e.GET("/news").WithHeader("Accept", "application/json").WithQuery("text", "Foo bar").WithQuery("int", 123).
 		Expect().
 		Status(iris.StatusOK).
 		Body().Equal("Foo bar")
@@ -192,20 +213,20 @@ func TestHandlerOverride(t *testing.T) {
 	})
 
 	rv := validator.New(validator.Config{
-		APIHandler: func(err error, request validator.HTTPRequest, ctx *iris.Context) {
-			panic(apierr.BadRequest)
+		APIHandler: func(context *validator.Context, ctx *iris.Context) {
+			panic(apierr.NotFound)
 		},
 	})
 
 	api.Use(errorsHandler)
 	api.Use(rv)
 
-	api.Post("/news", rv.ValidateRequest(&PostAPINews{}), func(ctx *iris.Context) {
+	api.Post("/news", rv.ValidateRequest(&PostNewsJSON{}), func(ctx *iris.Context) {
 		ctx.Text(200, "Done")
 	})
 
 	e := httptest.New(api, t, httptest.ExplicitURL(true))
 	e.POST("/news").WithHeader("Accept", "application/json").WithJSON(map[string]interface{}{"foo": 123}).
 		Expect().
-		Status(iris.StatusBadRequest)
+		Status(iris.StatusNotFound)
 }

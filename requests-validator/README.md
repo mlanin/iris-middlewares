@@ -14,7 +14,8 @@ By Default it highly utilizes [go-apierr](https://github.com/mlanin/go-apierr) p
 
 Validation logic and errors handling can be overridden.
 
-* Validates your requests by [ozzo-validation](https://github.com/go-ozzo/ozzo-validation).
+* Populates your requests from the preferred source.
+* Validates requests data by [ozzo-validation(v3)](https://github.com/go-ozzo/ozzo-validation).
 * Saves valid request to the context to use its data further.
 
 ### JSON API validation
@@ -46,6 +47,8 @@ to the referer url or previous visited page or `/`.
 ## Usage
 
 ```go
+package main
+
 import (
   "github.com/kataras/iris"
   "github.com/mlanin/go-apierr"
@@ -53,35 +56,26 @@ import (
   validator "github.com/mlanin/iris-middlewares/requests-validator"
 )
 
-// News model.
-type News struct {
+// PostNewsJSON request:
+// - if name ends with JSON, request will be populated from JSON;
+// - if name ends with XML, request will be populated with XML;
+// - if name ends with Form, request will be populated from form data;
+// - if name ends with Query, request will be populated from URL query
+type PostNewsJSON struct {
+	// By default fields in request will be searched by their name, but you can override it by tag:
+	// - json
+	// - xml
+	// - form
+	// - query
 	Text string `json:"text"`
 }
 
-// PostNews request.
-type PostNews struct {
-	validator.HTTPRequest
-	News
-}
-
-// Type of the request. "json" or "form".
-// Used to resolve field name from the request struct's tags.
-func (r *PostAPINews) Type() string {
-	return "json"
-}
-
 // Validate request.
-// As you see, validation logic can be anything you want.
-func (r *PostNews) Validate(ctx *iris.Context) error {
-  // Parse JSON in request.
-	if err := ctx.ReadJSON(&r.News); err != nil {
-		panic(apierr.BadRequest)
-	}
-
-  // Validate fields.
-	return validation.StructRules{}.
-		Add("Text", validation.Required).
-		Validate(r)
+func (r *PostNews) Validate() error {
+	// Register validation rules.
+	return validation.ValidateStruct(r,
+		validation.Field(&r.Text, validation.Required),
+	)
 }
 
 func main() {
@@ -99,14 +93,14 @@ func main() {
 		},
 	})
 
-	// Import middlewares.
+	// Import middleware.
   iris.Use(errorsHandler)
   iris.Use(rv)
 
   // Place rv.ValidateRequest with you request struct right before main handler.
-	iris.Post("/news", rv.ValidateRequest(&PostNews{}), func(ctx *iris.Context) {
-    // If request is valid, it will be stored by "request" key in the context.
-    request := ctx.Get("request").(*PostNews)
+	iris.Post("/news", rv.ValidateRequest(&PostNewsJSON{}), func(ctx *iris.Context) {
+    // If request is valid, it will be stored by request full name key in the IRIS context.
+    request := ctx.Get("main.PostNewsJSON").(*PostNewsJSON)
 
 		ctx.Text(200, request.Text)
 	})
@@ -123,11 +117,14 @@ func main() {
 
 	// Make RequestsValidator middleware and override default JSON API requests errors.
 	rv := validator.New(validator.Config{
-		APIHandler: func(err error, ctx *iris.Context) {
+		APIHandler: func(context *validator.Context, ctx *iris.Context) {
 			panic(apierr.BadRequest)
 		},
-		WebHandler: func(err error, ctx *iris.Context) {
+		WebHandler: func(context *validator.Context, ctx *iris.Context) {
 			ctx.Text(200, "Error")
+		},
+		BadRequestHandler: func(context *validator.Context, ctx *iris.Context) {
+			panic(apierr.BadRequest)
 		},
 	})
 
