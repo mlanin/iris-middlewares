@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"git.acronis.com/ci/ci-2x-ipn/app/support/utils"
-
 	validation "github.com/go-ozzo/ozzo-validation"
 	"github.com/kataras/iris"
 	"github.com/mlanin/go-apierr"
@@ -263,5 +261,5 @@ func (rv *RequestsValidator) normalizeFieldName(reflection reflect.Type, request
 
 // Upper case first letter of the message.
 func (rv *RequestsValidator) normalizeMessage(message error) string {
-	return utils.UcFirst(message.Error())
+	return UcFirst(message.Error())
 }
